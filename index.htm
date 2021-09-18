@@ -5,7 +5,7 @@
 	<meta content='width=device-width' name='viewport'>
   <meta name="theme-color" content="#222222">
   <link rel="shortcut icon" href="favicon.png"> 
-	<title>Install WLED</title>
+	<title>Install Firmware Robot</title>
   <script
     type="module"
     src="installer/install-button-342.js"
@@ -180,9 +180,9 @@
 <div id="flasher">
 
 <ol>
-  <li>Plug in your ESP to a USB port. We will install WLED <span id="verstr">0.12.0</span> to it.</li>
-  <li id="coms">Hit "Install" and select the correct COM port. <a onclick="showSerialHelp()">No device found?</a></li>
-  <li>Wait a while, the process is a lot faster if you stay on this tab.</li>
+  <li>Kết nối Robot với dây USB. Chúng ta sẽ cài đặt firmware <span id="verstr">0.12.0</span> cho robot.</li>
+  <li id="coms">Nhấn nút "Install" và lựa chọn cổng COM tương ứng với robot. <a onclick="showSerialHelp()">Không tìm thấy thiết bị?</a></li>
+  <li>Chờ một khoảng thời gian, quá trình cài đặt sẽ nhanh hơn nếu bạn ở lại trong tab trình duyệt này.</li>
 </ol><br><br>
 
 <div class="container inst-button">
@@ -207,15 +207,15 @@
         data-ethernet="bin/sr_0_12_1-b1/manifest_e.json"
         >0.12.1-b1</option>
     </optgroup>
-    <optgroup label="Beta">
+    <optgroup label="Beta Robot">
       <option data-manifest="bin/beta/manifest.json"
         data-ethernet="bin/beta/manifest_e.json"
-        >0.13.0-b2</option>
+        >version 1.0.0</option>
     </optgroup>
   </select><br><br>
   
   <input type="checkbox" id="erase" name="erase" onchange="toggleErase()" checked>
-  <label for="erase"> Clean install (deletes presets and settings)</label><br><br>
+  <label for="erase"> Cài đặt mới toàn bộ (Xóa tất cả thiết lập trước đó)</label><br><br>
   <div id="eth">
     <input type="checkbox" id="ethernet" name="ethernet" onchange="setManifest()">
     <label for="ethernet"> My board has Ethernet</label><br>
@@ -223,18 +223,17 @@
 </div>
 
 <div class="container log">
-  <span class="info-top" id="state">Initializing...</span>
+  <span class="info-top" id="state">Khởi tạo...</span>
   <span class="info-top" id="progress"></span><br>
   <div id="bar"><div id="bar-inner"></div></div>
   <span class="info-bot" id="env">&nbsp;</span>
   <span class="info-bot" id="extra">&nbsp;</span>
 </div>
 <div id="reset-button">
-  <br><button class="btn" onclick="reset()">&#8635; Start over</button><br>
+  <br><button class="btn" onclick="reset()">&#8635; Thực hiện lại</button><br>
 </div>
 
 </div>
-<br>Powered by <a href="https://esphome.github.io/esp-web-tools/" target="_blank">ESP Web Tools</a>
 
 <script>
   function handleStateEvent(ev) {
@@ -244,7 +243,7 @@
     if (s == "writing") {
       //progress
       var i = obj.details.percentage;
-      document.getElementById('state').textContent = "Writing...";
+      document.getElementById('state').textContent = "Đang ghi...";
       document.getElementById('progress').textContent = i + "%";
       document.getElementById('extra').textContent = `${(obj.details.bytesWritten/1000).toFixed(1)} / ${(obj.details.bytesTotal/1000).toFixed(1)} kB`
       //bar
