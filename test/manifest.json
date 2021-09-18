@@ -1,5 +1,5 @@
 {
-  "name": "ESPHome",
+  "name": "WLED 0.13.0-b2",
   "builds": [
     {
       "chipFamily": "ESP32",
@@ -10,6 +10,6 @@
         { "path": "boot_app0.bin", "offset": 57344 },
         { "path": "source_esp32_pca9685_.ino.esp32.bin", "offset": 65536 }
       ]
-    },
+    }
   ]
 }
