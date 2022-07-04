@@ -1,27 +1,20 @@
 <html>
 <head>
-  <!-- Add vUnit.js to the head if you want to avoid FOUC -->
-  <script src="./vunit.js"></script>
+  <style>
+    /*this query will apply for the devices those have width smaller than 480px*/
+@media (max-width: 480px) {
+  .h5p-container {
+    width: 100%;
+    height: 100%;
+  }
+}
 
-  <!-- Instantiate vUnit.js passing a CSSMap with properties you want to play with -->
-  <script>
-    new vUnit({
-      CSSMap: {
-        // The selector (vUnit will create rules ranging from .selector1 to .selector100)
-        '.h5p-container': {
-          // The CSS property (any CSS property that accepts px as units)
-          property: 'height',
-          // What to base the value on (vh, vw, vmin or vmax)
-          reference: 'vh'
-        }
-      },
-      onResize: function() {
-        console.log('1134');
-      }
-    }).init(); // call the public init() method
-  </script>
-
-
+.h5p-container {
+    width: 50%;
+    height: 50%;
+    /* height: 100vh; */
+}
+  </style>
   <link type="text/css" rel="stylesheet" media="all" href="../dist/styles/h5p.css" />
   <meta charset="utf-8" />
   <script type="text/javascript" src="../dist/js/h5p-standalone-main.min.js"></script>
@@ -40,6 +33,6 @@
 
 </head>
   <body>
-    <div class="h5p-container15"></div>
+    <div class="h5p-container"></div>
   </body>
 </html>
