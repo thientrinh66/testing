@@ -1,0 +1,12 @@
+{
+  "name": "Game Homies Chinh Phục",
+  "short_name": "Game Homies Chinh Phục",
+  "id": "com.example.platformer",
+  "description": "Hãy thu thập thật nhiều đồng xu năng lượng để sẵn sàng đổ bộ lên cung trắng nhé các Homies ơi!!!",
+  "orientation": "landscape",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "black",
+  "categories": ["games", "entertainment"],
+  "icons": []
+}
