@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<body>
+  <form id="checkinForm">
+    <label>Mã vé:</label><br>
+    <input type="text" id="ticketCode" name="ticketCode"><br>
+    <button type="submit">Check-in</button>
+  </form>
+  <script>
+    document.getElementById("checkinForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const ticketCode = document.getElementById("ticketCode").value;
+      const response = await fetch("YOUR_N8N_WEBHOOK_URL", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ticketCode })
+      });
+      const result = await response.json();
+      alert(result.message); // Hiển thị phản hồi từ n8n
+    });
+  </script>
+</body>
+</html>
