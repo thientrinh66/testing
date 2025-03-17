@@ -45,7 +45,7 @@
         let isScanning = false;
 
         // Thay YOUR_N8N_WEBHOOK_URL bằng URL webhook thực tế từ n8n
-        const webhookUrl = "YOUR_N8N_WEBHOOK_URL";
+        const webhookUrl = "https://awake-airedale-tolerant.ngrok-free.app/webhook-test/checkin";
 
         // Hàm bắt đầu quét QR
         function startScanner() {
@@ -65,7 +65,7 @@
                             body: JSON.stringify({ ticketCode })
                         });
                         const data = await response.json();
-                        document.getElementById("result").innerText += `\nPhản hồi từ n8n: ${data.message || "Check-in thành công!"}`;
+                        document.getElementById("result").innerText += `\nPhản hồi: ${data.message || "Check-in thành công!"}`;
                     } catch (err) {
                         document.getElementById("result").innerText += `\nLỗi: ${err.message}`;
                     }
