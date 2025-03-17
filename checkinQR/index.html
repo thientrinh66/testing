@@ -44,39 +44,41 @@
         const codeReader = new ZXing.BrowserQRCodeReader();
         let isScanning = false;
 
-        // Thay bằng URL webhook thực tế từ n8n
-        const webhookUrl = "https://your-n8n-instance/webhook/checkin";
+        // Thay YOUR_N8N_WEBHOOK_URL bằng URL webhook thực tế từ n8n
+        const webhookUrl = "YOUR_N8N_WEBHOOK_URL";
 
         // Hàm bắt đầu quét QR
-        async function startScanner() {
+        function startScanner() {
             if (isScanning) return;
             isScanning = true;
-            document.getElementById("result").innerText = "Đang quét...";
 
-            try {
-                const result = await codeReader.decodeFromVideoDevice(null, "reader");
-                const ticketCode = result.text;
-                document.getElementById("result").innerText = `Đã quét: ${ticketCode}`;
+            codeReader.decodeFromVideoDevice(null, "reader", async (result, error) => {
+                if (result) {
+                    const ticketCode = result.text;
+                    document.getElementById("result").innerText = `Đã quét: ${ticketCode}`;
 
-                // Gửi dữ liệu đến n8n
-                const response = await fetch(webhookUrl, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ ticketCode })
-                });
+                    // Gửi dữ liệu đến webhook của n8n
+                    try {
+                        const response = await fetch(webhookUrl, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ ticketCode })
+                        });
+                        const data = await response.json();
+                        document.getElementById("result").innerText += `\nPhản hồi từ n8n: ${data.message || "Check-in thành công!"}`;
+                    } catch (err) {
+                        document.getElementById("result").innerText += `\nLỗi: ${err.message}`;
+                    }
 
-                if (!response.ok) {
-                    throw new Error(`HTTP error! Status: ${response.status}`);
+                    // Dừng quét sau khi thành công (tùy chọn)
+                    stopScanner();
                 }
-
-                const data = await response.json();
-                document.getElementById("result").innerText += `\nPhản hồi từ n8n: ${data.message || "Không có phản hồi"}`;
-
-            } catch (err) {
-                document.getElementById("result").innerText = `Lỗi: ${err.message}`;
-            } finally {
-                stopScanner();
-            }
+                if (error && error.name !== "NotFoundException") {
+                    console.error(error);
+                }
+            }).catch(err => {
+                document.getElementById("result").innerText = `Lỗi khởi động camera: ${err}`;
+            });
         }
 
         // Hàm dừng quét
@@ -84,7 +86,7 @@
             if (!isScanning) return;
             codeReader.reset();
             isScanning = false;
-            document.getElementById("result").innerText += "\nĐã dừng quét.";
+            document.getElementById("result").innerText = "Đã dừng quét.";
         }
     </script>
 </body>
