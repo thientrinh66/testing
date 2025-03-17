@@ -65,7 +65,7 @@
                             body: JSON.stringify({ ticketCode })
                         });
                         const data = await response.json();
-                        document.getElementById("result").innerText += `\nPhản hồi từ n8n: ${data.message || "Check-in thành công!"}`;
+                        document.getElementById("result").innerText += `\nXác nhận: ${data.message || "Check-in thành công!"}`;
                     } catch (err) {
                         document.getElementById("result").innerText += `\nLỗi: ${err.message}`;
                     }
