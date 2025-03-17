@@ -1,25 +1,93 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Check-in QR Scanner</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            padding: 20px;
+        }
+        #reader {
+            width: 100%;
+            max-width: 500px;
+            height: 400px;
+            margin: 0 auto;
+            border: 2px solid #ccc;
+        }
+        #result {
+            margin-top: 20px;
+            font-size: 18px;
+            color: #333;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            margin-top: 10px;
+            cursor: pointer;
+        }
+    </style>
+</head>
 <body>
-  <form id="checkinForm">
-    <label>Mã vé:</label><br>
-    <input type="text" id="ticketCode" name="ticketCode"><br>
-    <button type="submit">Check-in</button>
-  </form>
-  <script src="https://unpkg.com/@zxing/library@latest"></script>
-<div id="reader"></div>
-<script>
-  const codeReader = new ZXing.BrowserQRCodeReader();
-  codeReader.decodeFromVideoDevice(null, "reader", async (result) => {
-    if (result) {
-      const ticketCode = result.text;
-      await fetch("YOUR_N8N_WEBHOOK_URL", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ticketCode })
-      });
-    }
-  });
-</script>
+    <h1>Check-in bằng QR Code</h1>
+    <p>Quét mã QR để check-in sự kiện</p>
+    <div id="reader"></div>
+    <div id="result"></div>
+    <button onclick="startScanner()">Bắt đầu quét</button>
+    <button onclick="stopScanner()">Dừng quét</button>
+
+    <!-- Tải thư viện ZXing từ CDN -->
+    <script src="https://unpkg.com/@zxing/library@latest/umd/index.min.js"></script>
+    <script>
+        const codeReader = new ZXing.BrowserQRCodeReader();
+        let isScanning = false;
+
+        // Thay YOUR_N8N_WEBHOOK_URL bằng URL webhook thực tế từ n8n
+        const webhookUrl = "YOUR_N8N_WEBHOOK_URL";
+
+        // Hàm bắt đầu quét QR
+        function startScanner() {
+            if (isScanning) return;
+            isScanning = true;
+
+            codeReader.decodeFromVideoDevice(null, "reader", async (result, error) => {
+                if (result) {
+                    const ticketCode = result.text;
+                    document.getElementById("result").innerText = `Đã quét: ${ticketCode}`;
+
+                    // Gửi dữ liệu đến webhook của n8n
+                    try {
+                        const response = await fetch(webhookUrl, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ ticketCode })
+                        });
+                        const data = await response.json();
+                        document.getElementById("result").innerText += `\nPhản hồi từ n8n: ${data.message || "Check-in thành công!"}`;
+                    } catch (err) {
+                        document.getElementById("result").innerText += `\nLỗi: ${err.message}`;
+                    }
+
+                    // Dừng quét sau khi thành công (tùy chọn)
+                    stopScanner();
+                }
+                if (error && error.name !== "NotFoundException") {
+                    console.error(error);
+                }
+            }).catch(err => {
+                document.getElementById("result").innerText = `Lỗi khởi động camera: ${err}`;
+            });
+        }
+
+        // Hàm dừng quét
+        function stopScanner() {
+            if (!isScanning) return;
+            codeReader.reset();
+            isScanning = false;
+            document.getElementById("result").innerText = "Đã dừng quét.";
+        }
+    </script>
 </body>
 </html>
