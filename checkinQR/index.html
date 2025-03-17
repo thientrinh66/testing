@@ -1,92 +1,318 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="vi">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Check-in QR Scanner</title>
     <style>
         body {
-            font-family: Arial, sans-serif;
+            font-family: 'Roboto', Arial, sans-serif;
             text-align: center;
             padding: 20px;
+            background-color: #f5f5f5;
+            margin: 0;
+            color: #333;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #2c3e50;
+            margin-bottom: 10px;
         }
         #reader {
             width: 100%;
             max-width: 500px;
             height: 400px;
-            margin: 0 auto;
+            margin: 20px auto;
             border: 2px solid #ccc;
+            border-radius: 10px;
+            overflow: hidden;
         }
         #result {
-            margin-top: 20px;
+            margin: 20px auto;
+            padding: 15px;
             font-size: 18px;
             color: #333;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+            min-height: 60px;
+            text-align: left;
+            border-left: 4px solid #6c757d;
+        }
+        .success {
+            border-left-color: #28a745 !important;
+            background-color: #e8f5e9 !important;
+        }
+        .error {
+            border-left-color: #dc3545 !important;
+            background-color: #ffeaea !important;
+        }
+        .button-group {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 20px;
         }
         button {
-            padding: 10px 20px;
+            padding: 12px 24px;
             font-size: 16px;
-            margin-top: 10px;
+            border: none;
+            border-radius: 5px;
             cursor: pointer;
+            transition: background-color 0.3s;
+            color: white;
+        }
+        .start-button {
+            background-color: #007bff;
+        }
+        .start-button:hover {
+            background-color: #0069d9;
+        }
+        .stop-button {
+            background-color: #dc3545;
+        }
+        .stop-button:hover {
+            background-color: #c82333;
+        }
+        .location-button {
+            background-color: #28a745;
+            width: 100%;
+            margin-top: 10px;
+        }
+        .location-button:hover {
+            background-color: #218838;
+        }
+        .settings {
+            margin-top: 20px;
+            text-align: left;
+        }
+        .settings select {
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+        }
+        .loading {
+            display: none;
+            margin: 10px auto;
+        }
+        .loading:after {
+            content: "...";
+            animation: dots 1.5s steps(5, end) infinite;
+        }
+        @keyframes dots {
+            0%, 20% { content: "."; }
+            40% { content: ".."; }
+            60%, 100% { content: "..."; }
         }
     </style>
 </head>
 <body>
-    <h1>Check-in bằng QR Code</h1>
-    <p>Quét mã QR để check-in sự kiện</p>
-    <video id="reader"></video>
-    <div id="result"></div>
-    <button onclick="startScanner()">Bắt đầu quét</button>
-    <button onclick="stopScanner()">Dừng quét</button>
+    <div class="container">
+        <h1>Check-in bằng QR Code</h1>
+        <p>Quét mã QR để check-in sự kiện</p>
+        
+        <div id="reader"></div>
+        
+        <div id="result">Sẵn sàng quét mã QR...</div>
+        
+        <div class="button-group">
+            <button class="start-button" onclick="startScanner()">Bắt đầu quét</button>
+            <button class="stop-button" onclick="stopScanner()">Dừng quét</button>
+        </div>
+        
+        <button class="location-button" onclick="getLocation()">Gửi kèm vị trí hiện tại</button>
+        
+        <div class="settings">
+            <label for="camera-select">Chọn camera: </label>
+            <select id="camera-select">
+                <option value="">Camera mặc định</option>
+            </select>
+        </div>
+        
+        <div id="loading" class="loading">Đang xử lý</div>
+    </div>
 
     <!-- Tải thư viện ZXing từ CDN -->
     <script src="https://unpkg.com/@zxing/library@latest/umd/index.min.js"></script>
     <script>
         const codeReader = new ZXing.BrowserQRCodeReader();
         let isScanning = false;
-
+        let currentDeviceId = null;
+        let locationData = null;
+        
         // Thay YOUR_N8N_WEBHOOK_URL bằng URL webhook thực tế từ n8n
         const webhookUrl = "https://awake-airedale-tolerant.ngrok-free.app/webhook/checkin";
-
+        
+        // Khi trang web được tải xong
+        document.addEventListener('DOMContentLoaded', async () => {
+            try {
+                // Xin quyền truy cập camera
+                await navigator.mediaDevices.getUserMedia({ video: true });
+                // Lấy danh sách camera
+                const videoInputDevices = await navigator.mediaDevices.enumerateDevices();
+                const cameras = videoInputDevices.filter(device => device.kind === 'videoinput');
+                
+                const cameraSelect = document.getElementById('camera-select');
+                cameras.forEach((camera, index) => {
+                    const option = document.createElement('option');
+                    option.value = camera.deviceId;
+                    option.text = camera.label || `Camera ${index + 1}`;
+                    cameraSelect.appendChild(option);
+                });
+                
+                cameraSelect.addEventListener('change', (event) => {
+                    currentDeviceId = event.target.value;
+                    if (isScanning) {
+                        stopScanner();
+                        startScanner();
+                    }
+                });
+            } catch (error) {
+                console.error("Error accessing camera:", error);
+                document.getElementById("result").innerText = "Không thể truy cập camera. Vui lòng cho phép quyền truy cập camera.";
+                document.getElementById("result").className = "error";
+            }
+        });
+        
         // Hàm bắt đầu quét QR
         function startScanner() {
             if (isScanning) return;
+            
+            const resultElement = document.getElementById("result");
+            resultElement.className = "";
+            resultElement.innerText = "Đang quét...";
+            
             isScanning = true;
-
-            codeReader.decodeFromVideoDevice(null, "reader", async (result, error) => {
+            codeReader.decodeFromVideoDevice(currentDeviceId, "reader", async (result, error) => {
                 if (result) {
                     const ticketCode = result.text;
-                    document.getElementById("result").innerText = `Đã quét: ${ticketCode}`;
-
+                    resultElement.innerText = `Đã quét: ${ticketCode}`;
+                    document.getElementById("loading").style.display = "block";
+                    
+                    // Chuẩn bị dữ liệu để gửi
+                    const postData = { ticketCode };
+                    
+                    // Nếu có dữ liệu vị trí, thêm vào request
+                    if (locationData) {
+                        postData.location = `${locationData.latitude},${locationData.longitude}`;
+                    }
+                    
                     // Gửi dữ liệu đến webhook của n8n
                     try {
                         const response = await fetch(webhookUrl, {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ ticketCode })
+                            body: JSON.stringify(postData)
                         });
+                        
                         const data = await response.json();
-                        document.getElementById("result").innerText += `\nXác nhận: ${data.message || "Check-in thành công!"}`;
+                        
+                        document.getElementById("loading").style.display = "none";
+                        
+                        if (data.success) {
+                            resultElement.className = "success";
+                            resultElement.innerHTML = `<strong>Xác nhận:</strong> ${data.message || "Check-in thành công!"}<br>`;
+                            if (data.name) {
+                                resultElement.innerHTML += `<strong>Tên:</strong> ${data.name}`;
+                            }
+                        } else {
+                            resultElement.className = "error";
+                            resultElement.innerHTML = `<strong>Lỗi:</strong> ${data.message || "Không thể xác nhận check-in"}`;
+                            
+                            if (data.name && data.previousCheckin) {
+                                resultElement.innerHTML += `<br><strong>Tên:</strong> ${data.name}<br>`;
+                                resultElement.innerHTML += `<strong>Đã check-in lúc:</strong> ${formatDate(data.previousCheckin)}`;
+                            }
+                        }
                     } catch (err) {
-                        document.getElementById("result").innerText += `\nLỗi: ${err.message}`;
+                        document.getElementById("loading").style.display = "none";
+                        resultElement.className = "error";
+                        resultElement.innerText = `Lỗi kết nối: ${err.message}`;
                     }
-
-                    // Dừng quét sau khi thành công (tùy chọn)
+                    
+                    // Dừng quét sau khi thành công
                     stopScanner();
                 }
+                
                 if (error && error.name !== "NotFoundException") {
                     console.error(error);
                 }
             }).catch(err => {
-                document.getElementById("result").innerText = `Lỗi khởi động camera: ${err}`;
+                resultElement.className = "error";
+                resultElement.innerText = `Lỗi khởi động camera: ${err}`;
+                isScanning = false;
             });
         }
-
+        
         // Hàm dừng quét
         function stopScanner() {
             if (!isScanning) return;
             codeReader.reset();
             isScanning = false;
-            document.getElementById("result").innerText = "Đã dừng quét.";
+        }
+        
+        // Hàm lấy vị trí hiện tại
+        function getLocation() {
+            const resultElement = document.getElementById("result");
+            
+            if (navigator.geolocation) {
+                resultElement.innerText = "Đang lấy vị trí...";
+                
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        locationData = {
+                            latitude: position.coords.latitude,
+                            longitude: position.coords.longitude
+                        };
+                        
+                        resultElement.className = "success";
+                        resultElement.innerText = `Đã lấy vị trí: ${locationData.latitude.toFixed(6)}, ${locationData.longitude.toFixed(6)}`;
+                        
+                        // Thay đổi text nút
+                        document.querySelector('.location-button').textContent = "Đã lấy vị trí ✓";
+                    },
+                    (error) => {
+                        resultElement.className = "error";
+                        
+                        switch(error.code) {
+                            case error.PERMISSION_DENIED:
+                                resultElement.innerText = "Người dùng từ chối quyền truy cập vị trí";
+                                break;
+                            case error.POSITION_UNAVAILABLE:
+                                resultElement.innerText = "Thông tin vị trí không khả dụng";
+                                break;
+                            case error.TIMEOUT:
+                                resultElement.innerText = "Yêu cầu vị trí đã hết thời gian";
+                                break;
+                            default:
+                                resultElement.innerText = "Đã xảy ra lỗi khi lấy vị trí";
+                                break;
+                        }
+                    }
+                );
+            } else {
+                resultElement.className = "error";
+                resultElement.innerText = "Trình duyệt không hỗ trợ định vị";
+            }
+        }
+        
+        // Hàm format ngày giờ
+        function formatDate(dateString) {
+            const date = new Date(dateString);
+            return date.toLocaleString('vi-VN', {
+                year: 'numeric',
+                month: 'numeric',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
         }
     </script>
 </body>
