@@ -6,18 +6,20 @@
     <input type="text" id="ticketCode" name="ticketCode"><br>
     <button type="submit">Check-in</button>
   </form>
-  <script>
-    document.getElementById("checkinForm").addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const ticketCode = document.getElementById("ticketCode").value;
-      const response = await fetch("YOUR_N8N_WEBHOOK_URL", {
+  <script src="https://unpkg.com/@zxing/library@latest"></script>
+<div id="reader"></div>
+<script>
+  const codeReader = new ZXing.BrowserQRCodeReader();
+  codeReader.decodeFromVideoDevice(null, "reader", async (result) => {
+    if (result) {
+      const ticketCode = result.text;
+      await fetch("YOUR_N8N_WEBHOOK_URL", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ticketCode })
       });
-      const result = await response.json();
-      alert(result.message); // Hiển thị phản hồi từ n8n
-    });
-  </script>
+    }
+  });
+</script>
 </body>
 </html>
