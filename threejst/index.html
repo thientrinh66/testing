@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Floating Images</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+            transition: background-color 1s ease;
+        }
+        #bg-controls {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            z-index: 100;
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 10px;
+            border-radius: 8px;
+            color: white;
+        }
+        .control-group {
+            margin-bottom: 10px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+        }
+        button {
+            padding: 8px 15px;
+            margin: 5px;
+            cursor: pointer;
+            border: none;
+            border-radius: 4px;
+            background-color: #4CAF50;
+            color: white;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        #status {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            z-index: 100;
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 10px;
+            border-radius: 8px;
+            color: white;
+        }
+        #google-drive-url {
+            width: 100%;
+            padding: 5px;
+            margin-bottom: 10px;
+        }
+        .preset-bg {
+            width: 20px;
+            height: 20px;
+            display: inline-block;
+            margin: 0 5px;
+            cursor: pointer;
+            border: 1px solid #fff;
+        }
+    </style>
+</head>
+<body>
+    <div id="bg-controls">
+        <div class="control-group">
+            <label for="google-drive-url">Link Google Drive Folder:</label>
+            <input type="text" id="google-drive-url" placeholder="Nhập ID folder Google Drive">
+            <button id="load-images">Tải hình ảnh</button>
+        </div>
+        <div class="control-group">
+            <label>Màu nền:</label>
+            <div>
+                <span class="preset-bg" style="background-color: #000000" data-color="#000000"></span>
+                <span class="preset-bg" style="background-color: #1a237e" data-color="#1a237e"></span>
+                <span class="preset-bg" style="background-color: #004d40" data-color="#004d40"></span>
+                <span class="preset-bg" style="background-color: #bf360c" data-color="#bf360c"></span>
+                <span class="preset-bg" style="background-color: #263238" data-color="#263238"></span>
+            </div>
+            <input type="color" id="custom-color" value="#000000">
+            <button id="apply-color">Áp dụng màu</button>
+        </div>
+        <div class="control-group">
+            <label for="refresh-interval">Thời gian tự động làm mới (giây):</label>
+            <input type="number" id="refresh-interval" min="5" value="30">
+            <button id="apply-interval">Áp dụng</button>
+        </div>
+        <button id="toggle-fullscreen">Toàn màn hình</button>
+    </div>
+    
+    <div id="status">
+        Trạng thái: Chưa tải hình ảnh
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // Biến toàn cục
+        let scene, camera, renderer;
+        let imagePlanes = [];
+        let lastFetchTime = 0;
+        let refreshInterval = 30000; // 30 giây mặc định
+        let refreshTimer;
+        let currentImages = new Set();
+        let isFirstLoad = true;
+
+        // Khởi tạo Three.js
+        function init() {
+            // Tạo scene
+            scene = new THREE.Scene();
+            
+            // Tạo camera
+            const aspect = window.innerWidth / window.innerHeight;
+            camera = new THREE.PerspectiveCamera(75, aspect, 0.1, 1000);
+            camera.position.z = 5;
+            
+            // Tạo renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setClearColor(0x000000); // Màu đen mặc định
+            document.body.appendChild(renderer.domElement);
+            
+            // Xử lý sự kiện resize
+            window.addEventListener('resize', onWindowResize);
+            
+            // Thiết lập các sự kiện UI
+            setupUIControls();
+            
+            // Bắt đầu animation
+            animate();
+        }
+        
+        // Xử lý resize cửa sổ
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+        
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            // Xoay các image planes
+            imagePlanes.forEach(plane => {
+                plane.rotation.x += 0.002 * plane.userData.rotationSpeed;
+                plane.rotation.y += 0.002 * plane.userData.rotationSpeed;
+                
+                // Di chuyển các images
+                plane.position.x += plane.userData.velocityX;
+                plane.position.y += plane.userData.velocityY;
+                plane.position.z += plane.userData.velocityZ;
+                
+                // Nếu image đi ra ngoài khung nhìn, đưa nó về phía đối diện
+                const limit = 10;
+                if (plane.position.x > limit) plane.position.x = -limit;
+                if (plane.position.x < -limit) plane.position.x = limit;
+                if (plane.position.y > limit) plane.position.y = -limit;
+                if (plane.position.y < -limit) plane.position.y = limit;
+                if (plane.position.z > 10) plane.position.z = -5;
+                if (plane.position.z < -5) plane.position.z = 10;
+            });
+            
+            renderer.render(scene, camera);
+        }
+        
+        // Thiết lập UI controls
+        function setupUIControls() {
+            // Nút tải ảnh từ Google Drive
+            document.getElementById('load-images').addEventListener('click', loadImagesFromDrive);
+            
+            // Nút thay đổi màu nền tùy chỉnh
+            document.getElementById('apply-color').addEventListener('click', () => {
+                const color = document.getElementById('custom-color').value;
+                changeBackgroundColor(color);
+            });
+            
+            // Các preset màu nền
+            document.querySelectorAll('.preset-bg').forEach(preset => {
+                preset.addEventListener('click', () => {
+                    const color = preset.getAttribute('data-color');
+                    document.getElementById('custom-color').value = color;
+                    changeBackgroundColor(color);
+                });
+            });
+            
+            // Thay đổi thời gian refresh
+            document.getElementById('apply-interval').addEventListener('click', () => {
+                const seconds = parseInt(document.getElementById('refresh-interval').value);
+                if (seconds >= 5) {
+                    refreshInterval = seconds * 1000;
+                    updateRefreshTimer();
+                    updateStatus(`Đã đặt thời gian làm mới: ${seconds} giây`);
+                }
+            });
+            
+            // Nút toàn màn hình
+            document.getElementById('toggle-fullscreen').addEventListener('click', toggleFullScreen);
+        }
+        
+        // Thay đổi màu nền
+        function changeBackgroundColor(color) {
+            renderer.setClearColor(new THREE.Color(color));
+            updateStatus(`Đã thay đổi màu nền: ${color}`);
+        }
+        
+        // Cập nhật trạng thái
+        function updateStatus(message) {
+            document.getElementById('status').textContent = `Trạng thái: ${message}`;
+        }
+        
+        // Toggle fullscreen
+        function toggleFullScreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => {
+                    updateStatus(`Lỗi chế độ toàn màn hình: ${err.message}`);
+                });
+            } else {
+                document.exitFullscreen();
+            }
+        }
+        
+        // Tải và hiển thị hình ảnh từ Google Drive
+        async function loadImagesFromDrive() {
+            const folderIdInput = document.getElementById('google-drive-url').value.trim();
+            
+            // Kiểm tra input
+            if (!folderIdInput) {
+                updateStatus('Vui lòng nhập ID folder Google Drive');
+                return;
+            }
+            
+            // Lấy folder ID từ input (có thể là URL hoặc ID trực tiếp)
+            let folderId = folderIdInput;
+            
+            // Nếu là URL đầy đủ, cố gắng trích xuất ID
+            if (folderIdInput.includes('drive.google.com')) {
+                const match = folderIdInput.match(/[-\w]{25,}/);
+                if (match) {
+                    folderId = match[0];
+                }
+            }
+            
+            updateStatus('Đang tải danh sách hình ảnh...');
+            
+            try {
+                // Sử dụng Google Drive API để lấy danh sách file
+                // Trong thực tế, bạn cần có backend hoặc sử dụng Google Drive API client
+                // Đây là cách giả lập để demo
+                
+                // URL để lấy danh sách public files từ folder
+                const apiUrl = `https://www.googleapis.com/drive/v3/files?q='${folderId}'+in+parents+and+trashed=false&key=YOUR_API_KEY`;
+                
+                // Trong thực tế, bạn sẽ cần gửi request đến server của bạn, 
+                // server sẽ gọi Google API với authentication phù hợp
+                // Đây chỉ là demo UI
+                
+                // Demo: Giả lập kết quả tải hình ảnh thành công
+                simulateImageLoading(folderId);
+                
+                // Cập nhật thời gian làm mới
+                lastFetchTime = Date.now();
+                updateRefreshTimer();
+                
+            } catch (error) {
+                updateStatus(`Lỗi khi tải hình ảnh: ${error.message}`);
+            }
+        }
+        
+        // Giả lập tải hình ảnh (vì không thể gọi trực tiếp Google API từ client)
+        function simulateImageLoading(folderId) {
+            // Xóa hình ảnh cũ nếu không phải lần tải đầu tiên
+            if (!isFirstLoad) {
+                removeAllImages();
+            }
+            
+            // Demo: Tạo một số hình ảnh giả lập
+            const imageCount = 5 + Math.floor(Math.random() * 5);
+            updateStatus(`Đã tìm thấy ${imageCount} hình ảnh. Đang tải...`);
+            
+            // Đặt bit để xác định đây không phải lần tải đầu tiên
+            isFirstLoad = false;
+            
+            // Tạo placeholder images cho demo
+            setTimeout(() => {
+                for (let i = 0; i < imageCount; i++) {
+                    // Trong thực tế, bạn sẽ sử dụng URL thực từ Google Drive
+                    // URL sẽ có dạng: https://drive.google.com/uc?export=view&id=FILE_ID
+                    const imageSize = 200 + Math.random() * 100;
+                    const placeholderUrl = `/api/placeholder/${imageSize}/${imageSize}`;
+                    
+                    // Tạo 3D plane với hình ảnh
+                    createImagePlane(placeholderUrl, imageSize/100);
+                }
+                
+                updateStatus(`Đã tải xong ${imageCount} hình ảnh từ folder: ${folderId}`);
+            }, 1000);
+        }
+        
+        // Xóa tất cả hình ảnh khỏi scene
+        function removeAllImages() {
+            imagePlanes.forEach(plane => {
+                scene.remove(plane);
+                
+                // Cleanup texture memory
+                if (plane.material.map) {
+                    plane.material.map.dispose();
+                }
+                plane.material.dispose();
+                plane.geometry.dispose();
+            });
+            
+            imagePlanes = [];
+            currentImages.clear();
+        }
+        
+        // Tạo plane 3D với texture từ hình ảnh
+        function createImagePlane(imageUrl, size = 1) {
+            // Tạo texture loader
+            const textureLoader = new THREE.TextureLoader();
+            
+            // Load texture
+            textureLoader.load(
+                imageUrl,
+                function (texture) {
+                    // Tạo geometry và material
+                    const aspectRatio = texture.image.width / texture.image.height;
+                    const geometry = new THREE.PlaneGeometry(size * aspectRatio, size);
+                    const material = new THREE.MeshBasicMaterial({
+                        map: texture,
+                        side: THREE.DoubleSide,
+                        transparent: true,
+                        opacity: 0.9
+                    });
+                    
+                    // Tạo mesh
+                    const plane = new THREE.Mesh(geometry, material);
+                    
+                    // Thiết lập vị trí ngẫu nhiên
+                    plane.position.x = (Math.random() - 0.5) * 10;
+                    plane.position.y = (Math.random() - 0.5) * 10;
+                    plane.position.z = (Math.random() - 0.5) * 10;
+                    
+                    // Thiết lập góc quay ngẫu nhiên
+                    plane.rotation.x = Math.random() * Math.PI;
+                    plane.rotation.y = Math.random() * Math.PI;
+                    
+                    // Thiết lập dữ liệu chuyển động
+                    plane.userData = {
+                        velocityX: (Math.random() - 0.5) * 0.01,
+                        velocityY: (Math.random() - 0.5) * 0.01,
+                        velocityZ: (Math.random() - 0.5) * 0.01,
+                        rotationSpeed: 0.5 + Math.random()
+                    };
+                    
+                    // Thêm vào scene và mảng theo dõi
+                    scene.add(plane);
+                    imagePlanes.push(plane);
+                    currentImages.add(imageUrl);
+                },
+                undefined,
+                function (error) {
+                    console.error('Lỗi khi tải hình ảnh:', error);
+                }
+            );
+        }
+        
+        // Cập nhật timer làm mới
+        function updateRefreshTimer() {
+            // Xóa timer cũ nếu có
+            if (refreshTimer) {
+                clearTimeout(refreshTimer);
+            }
+            
+            // Đặt timer mới
+            refreshTimer = setTimeout(() => {
+                const folderIdInput = document.getElementById('google-drive-url').value.trim();
+                if (folderIdInput) {
+                    updateStatus('Đang tự động làm mới hình ảnh...');
+                    loadImagesFromDrive();
+                }
+            }, refreshInterval);
+        }
+        
+        // Khởi tạo ứng dụng
+        init();
+    </script>
+</body>
+</html>
