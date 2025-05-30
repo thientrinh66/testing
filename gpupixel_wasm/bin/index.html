@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>GPUPixel Web Demo</title>
+    <link rel="icon" href="https://gpupixel.pixpark.net/logo.png" type="image/png">
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f5f5f5;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        .container {
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            background-color: white;
+        }
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 10px;
+            background-color: #f9f9f9;
+            border-bottom: 1px solid #ddd;
+            flex-shrink: 0;
+        }
+        .logo {
+            height: 40px;
+            margin-right: 15px;
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+            margin: 0;
+            font-size: 24px;
+        }
+        .video-container {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #000;
+            overflow: hidden;
+        }
+        .video-box {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            width: 100%;
+            height: 100%;
+        }
+        canvas {
+            max-width: 100%;
+            max-height: 100%;
+            width: auto;
+            height: auto;
+            object-fit: contain;
+            background-color: #000;
+        }
+        .controls {
+            padding: 15px;
+            background-color: #f9f9f9;
+            border-top: 1px solid #ddd;
+            flex-shrink: 0;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            align-items: center;
+            gap: 20px;
+        }
+        .slider-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            min-width: 200px;
+        }
+        label {
+            font-weight: bold;
+            white-space: nowrap;
+            min-width: 120px;
+        }
+        input[type="range"] {
+            flex: 1;
+            min-width: 100px;
+        }
+        .status {
+            padding: 8px 15px;
+            background-color: #e8f5e9;
+            font-size: 12px;
+            text-align: center;
+            border-top: 1px solid #ddd;
+            flex-shrink: 0;
+        }
+        .control-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+        }
+        .control-button {
+            padding: 8px 20px;
+            font-size: 14px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background-color 0.3s;
+        }
+        .start-button {
+            background-color: #4CAF50;
+            color: white;
+        }
+        .start-button:hover {
+            background-color: #45a049;
+        }
+        .stop-button {
+            background-color: #f44336;
+            color: white;
+        }
+        .stop-button:hover {
+            background-color: #d32f2f;
+        }
+        .stop-button:disabled, .start-button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <img src="https://gpupixel.pixpark.net/logo.png" alt="GPUPixel Logo" class="logo">
+            <h1>GPUPixel Web Demo</h1>
+        </div>
+        
+        <div class="video-container">
+            <div class="video-box" id="videoBoxContainer">
+                <canvas id="gpupixel_canvas"></canvas>
+            </div>
+        </div>
+        
+        <div class="controls">
+            <div class="slider-container">
+                <label for="smoothing">Smoothing: <span id="smoothingValue">0</span></label>
+                <input type="range" id="smoothing" min="0" max="10" value="0" step="0.1">
+            </div>
+            <div class="slider-container">
+                <label for="whitening">Whitening: <span id="whiteningValue">0</span></label>
+                <input type="range" id="whitening" min="0" max="10" value="0" step="0.1">
+            </div>
+        </div>
+        
+        <div class="control-buttons">
+            <button id="startButton" class="control-button start-button">Start</button>
+            <button id="stopButton" class="control-button stop-button" disabled>Stop</button>
+        </div>
+        
+        <div class="status" id="statusLog">Status: Ready to start</div>
+    </div>
+
+    <script>
+        /**
+         * Application Configuration
+         * Defines video dimensions, resource paths and default beauty parameters
+         */
+        const CONFIG = {
+            video: {
+                width: 1280,
+                height: 720
+            },
+            resourcePath: '/gpupixel',
+            defaultBeautyParams: {
+                smoothing: 0,
+                whitening: 0
+            }
+        };
+        
+        /**
+         * DOM Element References
+         * Cached references to frequently accessed DOM elements
+         */
+        const DOM = {
+            canvas: document.getElementById('gpupixel_canvas'),
+            videoBox: document.getElementById('videoBoxContainer'),
+            smoothingSlider: document.getElementById('smoothing'),
+            whiteningSlider: document.getElementById('whitening'),
+            smoothingValue: document.getElementById('smoothingValue'),
+            whiteningValue: document.getElementById('whiteningValue'),
+            statusLog: document.getElementById('statusLog'),
+            startButton: document.getElementById('startButton'),
+            stopButton: document.getElementById('stopButton')
+        };
+        
+        /**
+         * Application State Variables
+         */
+        let wasmModule = null;        // WebAssembly module reference
+        let isProcessing = false;     // Flag to prevent concurrent processing
+        let videoStream = null;       // Camera stream reference
+        let videoElement = null;      // Video element for camera feed
+        let offscreenCanvas = null;   // Offscreen canvas for processing
+        let offscreenCtx = null;      // Offscreen canvas context
+        let animationFrameId = null;  // Reference to animation frame
+        let isActive = false;         // Flag to control processing state
+        
+        /**
+         * Calculates optimal canvas size to fit within the available viewport
+         */
+        function calculateOptimalCanvasSize() {
+            const header = document.querySelector('.header');
+            const controls = document.querySelector('.controls');
+            const status = document.querySelector('.status');
+            
+            const headerHeight = header ? header.offsetHeight : 0;
+            const controlsHeight = controls ? controls.offsetHeight : 0;
+            const statusHeight = status ? status.offsetHeight : 0;
+            
+            const availableHeight = window.innerHeight - headerHeight - controlsHeight - statusHeight;
+            const availableWidth = window.innerWidth;
+            
+            // Calculate aspect ratio of the video
+            const videoAspectRatio = CONFIG.video.width / CONFIG.video.height;
+            
+            // Calculate what the canvas size should be to fit the available space
+            let canvasWidth = availableWidth;
+            let canvasHeight = availableWidth / videoAspectRatio;
+            
+            if (canvasHeight > availableHeight) {
+                canvasHeight = availableHeight;
+                canvasWidth = availableHeight * videoAspectRatio;
+            }
+            
+            return {
+                width: Math.floor(canvasWidth),
+                height: Math.floor(canvasHeight),
+                availableWidth,
+                availableHeight
+            };
+        }
+        
+        /**
+         * Updates canvas display size while maintaining aspect ratio
+         */
+        function updateCanvasSize() {
+            const size = calculateOptimalCanvasSize();
+            
+            // Set canvas display size (CSS)
+            DOM.canvas.style.width = `${size.width}px`;
+            DOM.canvas.style.height = `${size.height}px`;
+            
+            console.log(`Canvas display size updated: ${size.width}x${size.height}`);
+            console.log(`Available space: ${size.availableWidth}x${size.availableHeight}`);
+        }
+        
+        /**
+         * Initializes DOM elements and creates offscreen canvas
+         */
+        function initDomElements() {
+            updateStatus('Setting up canvas and video elements...');
+            
+            // Set canvas internal resolution
+            DOM.canvas.width = CONFIG.video.width;
+            DOM.canvas.height = CONFIG.video.height;
+            
+            // Update canvas display size to fit viewport
+            updateCanvasSize();
+            
+            // Create offscreen canvas for image processing
+            offscreenCanvas = document.createElement('canvas');
+            offscreenCanvas.width = CONFIG.video.width;
+            offscreenCanvas.height = CONFIG.video.height;
+            offscreenCtx = offscreenCanvas.getContext('2d', { willReadFrequently: true });
+            
+            // Listen for window resize to update canvas size
+            window.addEventListener('resize', updateCanvasSize);
+            
+            updateStatus('Canvas setup complete');
+        }
+        
+        /**
+         * Updates the status message in the UI
+         * @param {string} message - Status message to display
+         */
+        function updateStatus(message) {
+            console.log(`Status update: ${message}`);
+            DOM.statusLog.textContent = `Status: ${message}`;
+        }
+        
+        /**
+         * Initializes the WebAssembly module and sets up the application
+         */
+        async function initWasmModule() {
+            try {
+                updateStatus('Loading WASM module...');
+                
+                // Initialize DOM elements
+                initDomElements();
+                
+                // Create hidden video element for camera capture
+                videoElement = document.createElement('video');
+                videoElement.width = CONFIG.video.width;
+                videoElement.height = CONFIG.video.height;
+                videoElement.autoplay = true;
+                videoElement.playsInline = true;
+                videoElement.muted = true; // Add muted for better browser compatibility
+                
+                updateStatus('Loading WebAssembly module...');
+                
+                // Load WASM module
+                wasmModule = await loadWasmModule();
+                
+                updateStatus('WASM module loaded successfully');
+                updateStatus('Initializing GPUPixel resources...');
+                
+                // Verify ccall function exists
+                if (!wasmModule.ccall) {
+                    throw new Error('WASM ccall function not available');
+                }
+                
+                console.log('Attempting to initialize GPUPixel with resource path:', CONFIG.resourcePath);
+                
+                // Initialize GPUPixel
+                const initResult = wasmModule.ccall('Init', 'number', ['string'], [CONFIG.resourcePath]);
+                
+                console.log('GPUPixel Init result:', initResult);
+           
+                if (initResult < 0) {
+                    throw new Error(`Failed to initialize GPUPixel (error code: ${initResult}). Please check if resource files exist in '${CONFIG.resourcePath}' directory.`);
+                }
+                
+                updateStatus('GPUPixel initialized successfully');
+                
+                // Verify other required functions
+                if (!wasmModule._SetBeautyParams) {
+                    throw new Error('WASM _SetBeautyParams function not available');
+                }
+                
+                // Register event listeners for UI controls
+                registerEventListeners();
+                
+                // Apply initial beauty parameters
+                updateBeautyParams();
+                
+                updateStatus('System ready - click Start to begin');
+                // Enable start button
+                DOM.startButton.disabled = false;
+            } catch (error) {
+                updateStatus(`Error: ${error.message}`);
+                console.error('Initialization failed:', error);
+                console.error('Current working directory and resource path check needed');
+            }
+        }
+        
+        /**
+         * Loads the WebAssembly module
+         * @returns {Promise} Promise that resolves with the WASM module
+         */
+        function loadWasmModule() {
+            return new Promise((resolve, reject) => {
+                // Set timeout for loading
+                const timeout = setTimeout(() => {
+                    reject(new Error('WASM module loading timeout'));
+                }, 30000); // 30 second timeout
+                
+                const script = document.createElement('script');
+                script.src = 'app.js';
+                script.onload = () => {
+                    updateStatus('app.js loaded, waiting for WASM initialization...');
+                    
+                    // Set up Module configuration before it initializes
+                    Module.onRuntimeInitialized = () => {
+                        clearTimeout(timeout);
+                        updateStatus('WASM runtime initialized, waiting for data files...');
+                    };
+                    
+                    // Use postRun callback to ensure everything including data files are loaded
+                    Module.postRun = Module.postRun || [];
+                    Module.postRun.push(() => {
+                        updateStatus('WASM postRun completed');
+                        
+                        // Poll for HEAPU8 availability with retries
+                        let retries = 0;
+                        const maxRetries = 10;
+                        const checkInterval = 100;
+                        
+                        const checkWasmReady = () => {
+                            retries++;
+                            updateStatus(`Checking WASM readiness (attempt ${retries}/${maxRetries})...`);
+                            
+                            // Check for the actual exported functions
+                            const requiredFunctions = ['_Init', '_Destroy', '_SetBeautyParams', '_ProcessImage', '_malloc', '_free'];
+                            const missingFunctions = [];
+                            
+                            for (const funcName of requiredFunctions) {
+                                if (typeof Module[funcName] !== 'function') {
+                                    missingFunctions.push(funcName);
+                                }
+                            }
+                            
+                            // Check memory arrays - HEAPU8 is usually global, not on Module
+                            if (typeof HEAPU8 === 'undefined' && typeof Module.HEAPU8 === 'undefined') {
+                                // Try to call updateMemoryViews if available
+                                if (typeof updateMemoryViews === 'function') {
+                                    updateStatus('Calling updateMemoryViews...');
+                                    try {
+                                        updateMemoryViews();
+                                        updateStatus('updateMemoryViews called successfully');
+                                    } catch (e) {
+                                        console.warn('updateMemoryViews failed:', e);
+                                    }
+                                }
+                                
+                                // Check again after updateMemoryViews
+                                if (typeof HEAPU8 === 'undefined' && typeof Module.HEAPU8 === 'undefined') {
+                                    // Try to create HEAPU8 from wasmMemory if available
+                                    if (typeof wasmMemory !== 'undefined' && wasmMemory.buffer) {
+                                        updateStatus('Creating HEAPU8 from wasmMemory...');
+                                        const tempHEAPU8 = new Uint8Array(wasmMemory.buffer);
+                                        if (tempHEAPU8.length > 0) {
+                                            // Make it globally available
+                                            window.HEAPU8 = tempHEAPU8;
+                                            Module.HEAPU8 = tempHEAPU8;
+                                            updateStatus('HEAPU8 created successfully');
+                                        } else {
+                                            missingFunctions.push('HEAPU8');
+                                        }
+                                    } else {
+                                        missingFunctions.push('HEAPU8');
+                                    }
+                                }
+                            }
+                            
+                            if (!Module.ccall) {
+                                missingFunctions.push('ccall');
+                            }
+                            
+                            if (missingFunctions.length > 0) {
+                                if (retries >= maxRetries) {
+                                    console.error('Missing WASM functions/objects after retries:', missingFunctions);
+                                    console.log('Available Module properties:', Object.keys(Module));
+                                    console.log('Global HEAPU8 type:', typeof HEAPU8);
+                                    console.log('Module.HEAPU8 type:', typeof Module.HEAPU8);
+                                    console.log('wasmMemory type:', typeof wasmMemory);
+                                    console.log('updateMemoryViews type:', typeof updateMemoryViews);
+                                    
+                                    // Check for other memory arrays
+                                    const memArrays = ['HEAP8', 'HEAPU8', 'HEAP16', 'HEAPU16', 'HEAP32', 'HEAPU32', 'HEAPF32', 'HEAPF64'];
+                                    const availableArrays = {};
+                                    memArrays.forEach(name => {
+                                        availableArrays[name] = {
+                                            global: typeof window[name],
+                                            module: typeof Module[name]
+                                        };
+                                    });
+                                    console.log('Memory arrays status:', availableArrays);
+                                    
+                                    reject(new Error(`WASM module not properly initialized after ${maxRetries} retries - missing: ${missingFunctions.join(', ')}`));
+                                } else {
+                                    // Retry after a short delay
+                                    setTimeout(checkWasmReady, checkInterval);
+                                }
+                            } else {
+                                // Ensure HEAPU8 is accessible from Module for consistency
+                                if (typeof HEAPU8 !== 'undefined' && !Module.HEAPU8) {
+                                    Module.HEAPU8 = HEAPU8;
+                                }
+                                updateStatus('WASM module fully loaded');
+                                resolve(Module);
+                            }
+                        };
+                        
+                        // Start checking immediately after postRun
+                        checkWasmReady();
+                    });
+                    
+                    // Handle module loading errors
+                    Module.onAbort = (what) => {
+                        clearTimeout(timeout);
+                        reject(new Error(`WASM module aborted: ${what}`));
+                    };
+                    
+                    // Monitor loading progress
+                    Module.setStatus = Module.setStatus || function(text) {
+                        updateStatus(`WASM: ${text}`);
+                        console.log('WASM Status:', text);
+                    };
+                };
+                
+                script.onerror = () => {
+                    clearTimeout(timeout);
+                    reject(new Error('Failed to load WASM script (app.js)'));
+                };
+                
+                document.body.appendChild(script);
+            });
+        }
+        
+        /**
+         * Registers event listeners for UI controls
+         */
+        function registerEventListeners() {
+            updateStatus('Setting up UI controls...');
+            DOM.smoothingSlider.addEventListener('input', updateBeautyParams);
+            DOM.whiteningSlider.addEventListener('input', updateBeautyParams);
+            DOM.startButton.addEventListener('click', startProcessing);
+            DOM.stopButton.addEventListener('click', stopProcessing);
+        }
+        
+        /**
+         * Initializes camera access and starts video stream
+         */
+        async function startCamera() {
+            try {
+                // Try to get the highest quality stream possible
+                const constraints = {
+                    video: {
+                        width: { ideal: CONFIG.video.width, min: 640 },
+                        height: { ideal: CONFIG.video.height, min: 360 },
+                        frameRate: { ideal: 30, max: 60 },
+                        facingMode: 'user' // Prefer front camera for beauty filters
+                    },
+                    audio: false
+                };
+                
+                updateStatus('Requesting camera access...');
+                videoStream = await navigator.mediaDevices.getUserMedia(constraints);
+                
+                videoElement.srcObject = videoStream;
+                await videoElement.play();
+                
+                // Log actual video dimensions
+                const track = videoStream.getVideoTracks()[0];
+                const settings = track.getSettings();
+                updateStatus(`Camera started: ${settings.width}x${settings.height} at ${settings.frameRate}fps`);
+                
+                // Update canvas size after camera starts (in case actual resolution differs)
+                updateCanvasSize();
+                
+            } catch (error) {
+                throw new Error(`Camera access denied: ${error.message}`);
+            }
+        }
+        
+        /**
+         * Updates beauty parameters based on slider values
+         */
+        function updateBeautyParams() {
+            const smoothing = parseFloat(DOM.smoothingSlider.value);
+            const whitening = parseFloat(DOM.whiteningSlider.value);
+            
+            DOM.smoothingValue.textContent = smoothing.toFixed(1);
+            DOM.whiteningValue.textContent = whitening.toFixed(1);
+            
+            if (wasmModule && wasmModule._SetBeautyParams) {
+                wasmModule._SetBeautyParams(smoothing, whitening);
+                updateStatus(`Beauty parameters updated - Smoothing: ${smoothing.toFixed(1)}, Whitening: ${whitening.toFixed(1)}`);
+            }
+        }
+        
+        /**
+         * Processes each video frame through the WASM module
+         * This function is called recursively for each animation frame
+         */
+        function processVideoFrame() {
+            // Skip processing if module or video isn't ready or if processing is stopped
+            if (!isActive || !wasmModule || !videoElement || !videoElement.videoWidth) {
+                if (isActive) {
+                    // Only request next frame if still active
+                    animationFrameId = requestAnimationFrame(processVideoFrame);
+                }
+                return;
+            }
+            
+            // Prevent concurrent processing
+            if (!isProcessing) {
+                isProcessing = true;
+                
+                try {
+                    // Get fresh memory reference each time to handle potential reallocation
+                    let heapU8;
+                    if (wasmModule.HEAPU8) {
+                        heapU8 = wasmModule.HEAPU8;
+                    } else if (typeof HEAPU8 !== 'undefined') {
+                        heapU8 = HEAPU8;
+                    } else {
+                        throw new Error('WASM HEAPU8 not available');
+                    }
+                    
+                    // Verify all required WASM functions
+                    if (typeof wasmModule._malloc !== 'function') {
+                        throw new Error('WASM _malloc function not available');
+                    }
+                    
+                    if (typeof wasmModule._free !== 'function') {
+                        throw new Error('WASM _free function not available');
+                    }
+                    
+                    if (typeof wasmModule._ProcessImage !== 'function') {
+                        throw new Error('WASM _ProcessImage function not available');
+                    }
+                    
+                    // Draw video frame to offscreen canvas
+                    offscreenCtx.drawImage(videoElement, 0, 0, CONFIG.video.width, CONFIG.video.height);
+                    
+                    // Get image data from canvas
+                    const imageData = offscreenCtx.getImageData(0, 0, CONFIG.video.width, CONFIG.video.height);
+                    
+                    if (!imageData || !imageData.data) {
+                        throw new Error('Failed to get image data from canvas');
+                    }
+                    
+                    // Allocate memory in WASM
+                    const dataSize = imageData.data.length;
+                    const dataPtr = wasmModule._malloc(dataSize);
+                    if (!dataPtr) {
+                        throw new Error('Failed to allocate WASM memory');
+                    }
+                    
+                    try {
+                        // Get fresh heap reference and verify it's not detached
+                        if (wasmModule.HEAPU8) {
+                            heapU8 = wasmModule.HEAPU8;
+                        } else if (typeof HEAPU8 !== 'undefined') {
+                            heapU8 = HEAPU8;
+                        }
+                        
+                        // Check if buffer is detached
+                        if (!heapU8 || !heapU8.buffer || heapU8.buffer.byteLength === 0) {
+                            throw new Error('WASM memory buffer is detached or invalid');
+                        }
+                        
+                        // Copy image data to WASM memory safely
+                        const targetArray = heapU8.subarray(dataPtr, dataPtr + dataSize);
+                        targetArray.set(imageData.data);
+                        
+                        // Process the image through WASM
+                        wasmModule._ProcessImage(
+                            dataPtr,
+                            CONFIG.video.width,
+                            CONFIG.video.height
+                        );
+                        
+                        // Get fresh heap reference again after processing
+                        if (wasmModule.HEAPU8) {
+                            heapU8 = wasmModule.HEAPU8;
+                        } else if (typeof HEAPU8 !== 'undefined') {
+                            heapU8 = HEAPU8;
+                        }
+                        
+                        // Verify buffer is still valid
+                        if (!heapU8 || !heapU8.buffer || heapU8.buffer.byteLength === 0) {
+                            throw new Error('WASM memory buffer became detached after processing');
+                        }
+                        
+                        // Get processed image data back from WASM
+                        const processedArray = heapU8.subarray(dataPtr, dataPtr + dataSize);
+                        const processedData = new Uint8ClampedArray(processedArray);
+                        const processedImageData = new ImageData(processedData, CONFIG.video.width, CONFIG.video.height);
+                        
+                        // Draw processed image to visible canvas
+                        const ctx = DOM.canvas.getContext('2d');
+                        ctx.putImageData(processedImageData, 0, 0);
+                        
+                    } finally {
+                        // Always free allocated memory
+                        wasmModule._free(dataPtr);
+                    }
+                    
+                } catch (error) {
+                    updateStatus(`Frame processing error: ${error.message}`);
+                    console.error('Detailed frame processing error:', error);
+                    console.error('WASM module state:', {
+                        hasModuleHEAPU8: !!wasmModule?.HEAPU8,
+                        hasGlobalHEAPU8: typeof HEAPU8 !== 'undefined',
+                        moduleHEAPU8Length: wasmModule?.HEAPU8?.length,
+                        globalHEAPU8Length: typeof HEAPU8 !== 'undefined' ? HEAPU8.length : 'N/A',
+                        moduleBufferValid: !!(wasmModule?.HEAPU8?.buffer && wasmModule.HEAPU8.buffer.byteLength > 0),
+                        globalBufferValid: typeof HEAPU8 !== 'undefined' ? !!(HEAPU8.buffer && HEAPU8.buffer.byteLength > 0) : false,
+                        hasMalloc: typeof wasmModule?._malloc,
+                        hasFree: typeof wasmModule?._free,
+                        hasProcessImage: typeof wasmModule?._ProcessImage,
+                        wasmModuleType: typeof wasmModule
+                    });
+                }
+                
+                isProcessing = false;
+            }
+            
+            // Request next animation frame only if still active
+            if (isActive) {
+                animationFrameId = requestAnimationFrame(processVideoFrame);
+            }
+        }
+        
+        /**
+         * Starts the camera and processing pipeline
+         */
+        async function startProcessing() {
+            try {
+                updateStatus('Starting camera and processing...');
+                DOM.startButton.disabled = true;
+                
+                // Set active flag
+                isActive = true;
+                
+                // Reinitialize GPUPixel if needed
+                updateStatus('Initializing GPUPixel resources...');
+                const initResult = wasmModule.ccall('Init', 'number', ['string'], [CONFIG.resourcePath]);
+                if (initResult < 0) {
+                    throw new Error(`Failed to initialize GPUPixel (error code: ${initResult})`);
+                }
+                updateStatus('GPUPixel initialized successfully');
+                
+                // Start camera
+                await startCamera();
+                
+                // Start processing video frames
+                animationFrameId = requestAnimationFrame(processVideoFrame);
+                
+                DOM.stopButton.disabled = false;
+                updateStatus('Processing active - camera feed is live');
+            } catch (error) {
+                updateStatus(`Error: ${error.message}`);
+                DOM.startButton.disabled = false;
+                isActive = false;
+                console.error('Failed to start processing:', error);
+            }
+        }
+        
+        /**
+         * Stops the camera and processing pipeline
+         */
+        function stopProcessing() {
+            updateStatus('Stopping camera and processing...');
+            DOM.stopButton.disabled = true;
+            
+            // Set inactive flag first to prevent further processing
+            isActive = false;
+            
+            // Cancel animation frame
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+                animationFrameId = null;
+            }
+            
+            // Clean up resources
+            cleanup();
+            
+            DOM.startButton.disabled = false;
+            updateStatus('Processing stopped - ready to start again');
+        }
+        
+        /**
+         * Cleans up resources when the application is stopped
+         */
+        function cleanup() {
+            updateStatus('Cleaning up resources...');
+            
+            if (wasmModule) {
+                wasmModule._Destroy();
+                updateStatus('WASM module destroyed');
+            }
+            
+            if (videoStream) {
+                videoStream.getTracks().forEach(track => {
+                    track.stop();
+                    updateStatus(`Video track stopped: ${track.label}`);
+                });
+                videoStream = null;
+            }
+            
+            updateStatus('Cleanup complete');
+        }
+        
+        // Initialize application when page loads
+        window.addEventListener('load', initWasmModule);
+        
+        // No need to clean up on page unload as we now have explicit control
+        // window.addEventListener('beforeunload', cleanup);
+    </script>
+</body>
+</html>
